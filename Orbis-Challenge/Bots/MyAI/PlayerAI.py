@@ -4,6 +4,7 @@ from PythonClientAPI.game.Enums import Team
 from PythonClientAPI.game.World import World
 from PythonClientAPI.game.TileUtils import TileUtils
 from random import choice as choose_random_from
+from math import inf
 
 class PlayerAI:
 
@@ -41,26 +42,73 @@ class PlayerAI:
             self.outbound = True
             return
 
-        x, y = friendly_unit.position
+        closest_enemy_tile = None
+        closest_enemy_distance = inf
+        for point in friendly_unit.snake:
+            tile = world.util.get_closest_enemy_head_from(point, [])
+            distance = world.path.get_shortest_path_distance(point, tile.position)
 
-        def viable(tile):
-            if tile.is_wall or tile.body == friendly_unit.team or  tile.head == friendly_unit.team:
-                return False
+            if distance < closest_enemy_distance:
+                closest_enemy_tile = tile
+                closest_enemy_distance = distance
 
-            return True
 
-        possibleMoves = [
-            world.position_to_tile_map[(x + 1, y)],
-            world.position_to_tile_map[(x, y + 1)],
-            world.position_to_tile_map[(x - 1, y)],
-            world.position_to_tile_map[(x, y - 1)]
-        ]
+        closest_territory_tile = world.util.get_closest_friendly_territory_from(friendly_unit.position, friendly_unit.snake)
+        closest_territory_path = world.path.get_shortest_path(friendly_unit.position, closest_territory_tile.position, friendly_unit.snake)
 
-        viableMoves = [move for move in possibleMoves if viable(move)]
+        print("Closest Enemy Distance:  ", closest_enemy_distance)
+        print("Closest Territory Distance:  ", len(closest_territory_path))
 
-        if not viableMoves:
-            print("Out of options")
-            return
+        if closest_enemy_distance < len(closest_territory_path)+1:
+            self.retreat = True
+            self.target = closest_territory_tile
+            next_move = closest_territory_path[0]
+
+        else:
+            self.retreat = False
+            self.target = None
+
+            def viable(tile):
+                if tile.is_wall or tile.body == friendly_unit.team or tile.head is not None:
+                    return False
+
+                return True
+
+            x, y = friendly_unit.position
+
+            possibleMoves = [
+                world.position_to_tile_map[(x + 1, y)],
+                world.position_to_tile_map[(x, y + 1)],
+                world.position_to_tile_map[(x - 1, y)],
+                world.position_to_tile_map[(x, y - 1)]
+            ]
+
+            next_move = None
+            farther_point_distance = -inf
+
+            for move in possibleMoves:
+                if viable(move):
+                    distance = world.path.get_shortest_path_distance(move.position, closest_territory_tile.position)
+
+                    if distance > farther_point_distance:
+                        farther_point_distance = distance
+                        next_move = move.position
+
+
+            if next_move is None:
+                next_move = choose_random_from(possibleMoves).position
+
+
+        # print("Closest_enemy_head:  ", closest_enemy_distance)
+        #
+        #
+        # viableMoves = [move for move in possibleMoves if viable(move)]
+        #
+        # if not viableMoves:
+        #     next_move = choose_random_from(possibleMoves).position
+        #
+        # else:
+        #     next_move = choose_random_from(viableMoves).position
 
 
         # # if unit reaches the target point, reverse outbound boolean and set target back to None
@@ -84,10 +132,10 @@ class PlayerAI:
         # next_move = world.path.get_shortest_path(friendly_unit.position, self.target.position, friendly_unit.snake)[0]
 
         # move!
-        next_move = choose_random_from(viableMoves).position
         friendly_unit.move(next_move)
-        print("MyAI Turn {0}: currently at {1}, making move to {2}.".format(
+        print("MyAI Turn {0}: currently at {1}, {2} to {3}.".format(
             str(self.turn_count),
             str(friendly_unit.position),
+            "retreating" if self.retreat else "making move",
             next_move
         ))
